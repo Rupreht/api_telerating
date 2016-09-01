@@ -1,0 +1,11 @@
+/var/log/api_telerating.log /var/log/api_telerating_error.log {
+    rotate 10
+    daily
+    compress
+    delaycompress
+    notifempty
+    missingok
+    sharedscripts
+    postrotate
+    endscript
+}

@@ -1,0 +1,1 @@
+*/5 * * * * root cd @API_TELERATING_PATH@; php ./api_telerating.php 1>>/var/log/api_telerating.log 2>>/var/log/api_telerating_error.log

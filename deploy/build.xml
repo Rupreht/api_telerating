@@ -1,0 +1,101 @@
+<?xml version="1.0" ?>
+<project name="api_telerating" basedir="." default="build">
+
+    <tstamp/>
+	<property file="../custom.ini"/>
+
+    <target name="build" description="Build task">
+
+        <exec command="apt-get -y install php5-memcache php5-curl php5-mysql curl"
+              level="info" outputProperty="install.error.msg" returnProperty="install.error.code"/>
+
+        <if>
+            <not>
+                <equals arg1="${install.error.code}" arg2="0"/>
+            </not>
+            <then>
+                <echo msg="${install.error.msg}" level="warning"/>
+            </then>
+        </if>
+
+        <taskdef
+		    name="dbdeploy"
+		    classname="phing.tasks.ext.dbdeploy.DbDeployTask"/>
+        <property
+		    name="progs.mysql"
+		    value="/usr/bin/mysql" />
+        <property
+		    name="build.dir"
+		    value="../" />
+        <resolvepath
+		    propertyName="project_path"
+		    file="${build.dir}" />
+        <property
+		    name="build.dbdeploy.deployfile"
+		    value="deploy/scripts/deploy-${DSTAMP}${TSTAMP}.sql" />
+        <property
+		    name="build.dbdeploy.undofile"
+		    value="deploy/scripts/undo-${DSTAMP}${TSTAMP}.sql" />
+
+        <!-- removing stalker tasks from crontab -->
+        <exec command="crontab -l | grep -v ${project_path} > /tmp/crontab; crontab /tmp/crontab" checkreturn="true"/>
+
+        <!-- create stalker tasks in /etc/cron.d/ -->
+        <delete file="/etc/cron.d/api_telerating" quiet="true" />
+        <copy file="./src/cron" tofile="/etc/cron.d/api_telerating" overwrite="true">
+            <filterchain>
+                <replacetokens>
+                    <token key="API_TELERATING_PATH" value="${project_path}"/>
+                </replacetokens>
+            </filterchain>
+        </copy>
+        <chmod file="/etc/cron.d/api_telerating" mode="0755"/>
+
+        <copy file="./src/telerating" tofile="/etc/logrotate.d/telerating" overwrite="true"/>
+
+        <copy file="./src/init_db.sql" tofile="/tmp/init_db.sql" overwrite="true">
+            <filterchain>
+                <replacetokens>
+                    <token key="DB_NAME" value="${db_name}"/>
+                </replacetokens>
+            </filterchain>
+        </copy>
+
+        <property name="mysql_host" value="${mysql_host}" override="true">
+            <filterchain>
+                <replaceregexp>
+                    <regexp pattern="p:" replace="" ignoreCase="true"/>
+                </replaceregexp>
+            </filterchain>
+        </property>
+
+        <exec command="${progs.mysql} -h${mysql_host} -u${mysql_user} -p${mysql_pass} &lt; /tmp/init_db.sql"
+              dir="${build.dir}" checkreturn="false" outputProperty="mysql_init.error.msg" returnProperty="mysql_init.error.code" />
+
+        <if>
+            <not>
+                <equals arg1="${mysql_init.error.code}" arg2="0"/>
+            </not>
+            <then>
+                <fail message="Mysql - ${mysql_init.error.msg}" />
+            </then>
+        </if>
+
+        <dbdeploy
+                url="mysql:host=${mysql_host};dbname=${db_name}"
+                userid="${mysql_user}"
+                password="${mysql_pass}"
+                dir="${build.dir}/db/delta"
+                outputfile="${build.dir}/${build.dbdeploy.deployfile}"
+                undooutputfile="${build.dir}/${build.dbdeploy.undofile}"/>
+
+        <exec
+                command="${progs.mysql} -h${mysql_host} -u${mysql_user} -p${mysql_pass} ${db_name} &lt; ${build.dbdeploy.deployfile}"
+                dir="${build.dir}"
+                returnProperty="dbdeploy_return" outputProperty="dbdeploy_output"/>
+
+        <echo msg="dbdeploy result: ${dbdeploy_return}"/>
+
+    </target>
+
+</project>
